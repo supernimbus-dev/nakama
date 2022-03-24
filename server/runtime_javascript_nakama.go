@@ -258,6 +258,8 @@ func (n *runtimeJavascriptNakamaModule) mappings(r *goja.Runtime) map[string]fun
 		"channelIdBuild":                  n.channelIdBuild(r),
 		"binaryToString":                  n.binaryToString(r),
 		"stringToBinary":                  n.stringToBinary(r),
+		"schedulerInSeconds":              n.schedulerInSeconds(r),
+		"schedulerCancel":                 n.schedulerCancel(r),
 	}
 }
 
@@ -7449,6 +7451,57 @@ func (n *runtimeJavascriptNakamaModule) channelIdBuild(r *goja.Runtime) func(goj
 		}
 
 		return r.ToValue(channelId)
+	}
+}
+
+// @summary Schedules the execution of the supplied RPC.
+// @param rpcName(string) The name of the RPC to execute.
+// @param delaySeconds(number) How long to wait until executing the RPC.
+// @param data(string) JSON payload data to pass to the RPC.
+// @param key(string) The id of the scheduled RPC. If schedule already exists for the given key it's details will be updated.
+// @return boolean(boolean) An optional error value if an error occurred.
+func (n *runtimeJavascriptNakamaModule) schedulerInSeconds(r *goja.Runtime) func(goja.FunctionCall) goja.Value {
+	return func(f goja.FunctionCall) goja.Value {
+		rpcName := getJsString(r, f.Argument(0))
+
+		delaySeconds := getJsInt(r, f.Argument(1))
+
+		data := "{}"
+		if f.Argument(2) != goja.Undefined() && f.Argument(2) != goja.Null() {
+			contentMap, ok := f.Argument(2).Export().(map[string]interface{})
+			if !ok {
+				panic(r.NewTypeError("expects content to be an object"))
+			}
+			contentBytes, err := json.Marshal(contentMap)
+			if err != nil {
+				panic(r.NewTypeError(fmt.Sprintf("error encoding content: %v", err.Error())))
+			}
+			data = string(contentBytes)
+		}
+
+		key := getJsString(r, f.Argument(3))
+
+		async := getJsBool(r, f.Argument(4))
+
+		result, err := SchedulerInSeconds(n.logger, rpcName, delaySeconds, data, key, async)
+		if err != nil {
+			panic(r.NewGoError(fmt.Errorf("failed to run scheduler: %s", err.Error())))
+		}
+
+		return r.ToValue(result)
+	}
+}
+
+// @summary Cancels the execution of a previously scheduled RPC.
+// @param key(string) The id of the scheduled RPC to cancel.
+// @return error(error) An optional error value if an error occurred.
+func (n *runtimeJavascriptNakamaModule) schedulerCancel(r *goja.Runtime) func(goja.FunctionCall) goja.Value {
+	return func(f goja.FunctionCall) goja.Value {
+		key := getJsString(r, f.Argument(0))
+
+		SchedulerCancel(key)
+
+		return goja.Undefined()
 	}
 }
 
